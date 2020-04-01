@@ -1,0 +1,166 @@
+---
+title: "STAT 480 HW8"
+author: "Stella Lang"
+date: "4/11/2018"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE}
+library(MASS)
+library(treemap)
+library(dplyr)
+library(gplots)
+```
+
+
+## Exercise 1
+
+According to the heatmap, cars like Suzuki Swift, Subaru Justy and Geo Metro tend to have lower engine size, fuel tank capacity and average price and higher city and highway mpg. Cars like Mercedes-Benz and Infiniti Q45 have higher engine size, fuel tank capacity and average price but lower city and highway mpg. According to the dendrogram, we can see that fuel tank capacity and average price are clustered together, which indicates cars with similar fuel tank capacity may have similar price. Also, city mpg and highway mpg are clustered together. Cars with similar city mpg may have similar highway mpg. Now take a look at the row dendrogram. If we consider three clusters for all cars in the dataset (i.e. put all cars into three groups), name Mercedes-Benz and Infiniti Q45 as group 1, cars from Mistubishi Mirage to Geo Metro as group 2 and cars from Ford Probe to Lincoln Town_Car as group 3. Group 1 and Group 3 seem to be very similar with respect to these statistics. They all have relatively low city and highway mpg but high price, fuel tank capacity and engine size. Group 2 is very different from other groups. They have relatively high city and highway mpg but low price, fuel tank capacity and engine size.
+
+```{r fig.height=8, fig.width=6}
+x  = as.matrix(Cars93[,c("EngineSize","Fuel.tank.capacity", "Price", "MPG.city", "MPG.highway")])
+rownames(x) = unlist(Cars93$Make)
+heatmap.2(x, scale = "column", trace = "none", density.info = "none", dendrogram="both", xlab = "Characteristics",
+          ylab ="Cars",cexRow=0.5, cexCol=.7, main = "Car Comparisons",margins = c(10,10))
+```
+
+## Exercise 2
+
+For domestic cars, heatmap is shown below. According to the heatmap, cars like Chevrolet Corvette seem to have larger engine size while Dodge Colt has smaller engine size. Chevrolet Astro has relatively high fuel tank capacity while Mercury Capri has low fuel tank capacity. As for average price, Cadillac Seville seem to be the highest and cars like Dodge Colt are low-price. For city and highway mpg, Pontiac LeMans  seem to be the higher than others and Ford Aerostar is low. 
+
+According to the dendrogram, we can see that fuel tank capacity and average price are clustered together, which indicates cars with similar fuel tank capacity may have similar price. Also, city mpg and highway mpg are clustered together. Cars with similar city mpg may have similar highway mpg. Now take a look at the row dendrogram. If we consider two clusters for all domestic cars , name cars from Ford Mustang to Saturn SL as group 1 and the rest as group 2. Group 1 and Group 2 seem to be very different with respect to these statistics. Group 2 have relatively low city and highway mpg but high price, fuel tank capacity and engine size. Group 1 have relatively high city and highway mpg but low price, fuel tank capacity and engine size.
+
+
+```{r fig.height=9, fig.width=7}
+x_usa = as.matrix(Cars93[Cars93[,"Origin"]=="USA",c("EngineSize","Fuel.tank.capacity", "Price", "MPG.city", "MPG.highway")])
+rownames(x_usa) = unlist(Cars93$Make[Cars93[,"Origin"]=="USA"])
+heatmap.2(x_usa, scale = "column", trace = "none", density.info = "none", dendrogram="both", xlab = "Characteristics",
+          ylab ="Cars",cexRow=0.5, cexCol=.7, main = "Domestic Car Comparisons",margins = c(10,10))
+```
+
+
+For imports, heatmap is shown below. According to the heatmap, cars like Geo Metro seem to have smaller engine size but higher city and highway mpg. Mercedes has high price but relatively low city and highway mpg. As for fuel tank capacity, Subaru Justy seems to be the lowest and BMW the highest.
+
+According to the dendrogram, we can see that fuel tank capacity and average price are clustered together, which indicates cars with similar fuel tank capacity may have similar price. Also, city mpg and highway mpg are clustered together. Cars with similar city mpg may have similar highway mpg. Now take a look at the row dendrogram. If we consider two clusters for all non-domestic cars , name cars from Toyota Celica to Geo Metro as group 1 and the rest as group 2. Group 1 and Group 2 seem to be very different with respect to these statistics. Group 2 have relatively low city and highway mpg but high price, fuel tank capacity and engine size. Group 1 have relatively high city and highway mpg but low price, fuel tank capacity and engine size.
+
+```{r fig.height=10, fig.width=8}
+x_non_usa = as.matrix(Cars93[Cars93[,"Origin"]!="USA",c("EngineSize","Fuel.tank.capacity", "Price", "MPG.city", "MPG.highway")])
+rownames(x_non_usa) = unlist(Cars93$Make[Cars93[,"Origin"]!="USA"])
+heatmap.2(x_non_usa, scale = "column", trace = "none", density.info = "none", dendrogram="both", xlab = "Characteristics",
+          ylab ="Cars",cexRow=0.5, cexCol=.7, main = "Non-Domestic Car Comparisons",margins = c(10,10))
+```
+
+## Exercise 3
+
+Overall, there are more high-price cars among imported cars than those among domestic cars. As for average highway fuel efficiency, cheaper cars tend to have higher average highway fuel efficiency. Among all, Infiniti and Mercedes have the highest price and Suzuki, Hyundai and Saturn are the lowest. Suzuki and Geo have high highway mpg while Infiniti has low highway mpg. Among domestic cars, Cadillac and Lincoln seem to have the highest price and lowest average highway fuel efficiency while Saturn has the lowest price and highest average highway fuel efficiency. Among imports, Infiniti and Mercedes seem to have the highest price and Infiniti has the lowest average highway fuel efficiency while Suzuki has the lowest price and highest average highway fuel efficiency. 
+
+```{r}
+# subset data and calculate average highway fuel efficiency and average price grouped by origin and manufacturer
+data3 = Cars93 %>% select(Origin, Manufacturer, MPG.highway, Price) %>%
+  group_by(Origin, Manufacturer) %>%
+  summarize(MPG.highway = mean(MPG.highway, na.rm=TRUE), Price = mean(Price, na.rm=TRUE)) 
+
+# plot treemap
+treemap(data3,
+        index=c("Origin", "Manufacturer"),
+        vSize="MPG.highway",
+        vColor="Price",
+        type="value",
+        fun.aggregate = "mean", 
+        title = "Average Highway Fuel Efficiency", 
+        title.legend = "Average Price")
+```
+
+## Exercise 4
+
+Overall, Infiniti has the highest average horsepower adn Suzuki has the lowest among all cars. Infiniti and Cadillac seem to have lowest average highway fuel efficiency while Suzuki and Geo have the highest. As for average highway fuel efficiency, cars with smaller average horsepower tend to have higher average highway fuel efficiency. Among domestic cars, Cadillac has the highest average horsepower and lowest average highway fuel efficiency while Saturn has the lowest average horsepower and highest average highway fuel efficiency. Among imports, Infiniti has the highest average horsepower and lowest average highway fuel efficiency while Suzuki has the lowest average horsepower and highest average highway fuel efficiency. 
+
+```{r}
+# subset data and group by origin and manufacturer
+data4 = Cars93 %>% select(Origin, Manufacturer, MPG.highway, Horsepower) %>%
+  group_by(Origin, Manufacturer) %>%
+  summarize(MPG.highway = mean(MPG.highway, na.rm=TRUE), Horsepower = mean(Horsepower, na.rm=TRUE)) 
+
+treemap(data4,
+        index=c("Origin", "Manufacturer"),
+        vSize="MPG.highway",
+        vColor="Horsepower",
+        type="value",
+        fun.aggregate = "mean",
+        title = "Average Highway Fuel Efficiency", 
+        title.legend = "Average Horsepower")
+```
+
+
+
+
+## Exercise 5
+
+Overall, cars with more cylinders seem to have lower average city and highway fuel efficiency. Cars with 3 cylinders and front drive train have the highest average highway and city fuel efficiency. Cars with 6 cylinders and 4WD drive train have the lowest average highway fuel efficiency and cars with 8 cylinders and front drive train and Cars with 6 cylinders and 4WD drive train have the lowest average city fuel efficiency. Within each cylinder group, cars with front drive train tends to have higher average city and highway fuel efficiency while cars with 4WD drive train tends to have lower average city and highway fuel efficiency.
+
+```{r}
+# subset data and group by cylinders and drive train
+# calcualte average highway and city mpg
+data5 = Cars93 %>% select(Cylinders, DriveTrain, MPG.highway, MPG.city) %>%
+  group_by(Cylinders, DriveTrain) %>%
+  summarize(MPG.highway = mean(MPG.highway, na.rm=TRUE), MPG.city = mean(MPG.city, na.rm=TRUE)) 
+
+# plot the treemap
+treemap(data5,
+        index=c("Cylinders", "DriveTrain"),
+        vSize="MPG.highway",
+        vColor="MPG.city",
+        type="value",
+        fun.aggregate = "mean",
+        title = "Average Highway Fuel Efficiency", 
+        title.legend = "Average City Fuel Efficiency")
+```
+
+
+## Exercise 6
+
+Below is the smoothscatter plot and kernel density estimation plot for highway mpg and horsepower.
+
+```{r}
+smoothScatter(Cars93[,c("MPG.highway","Horsepower")], nrpoints=0)
+# plot kde for highway mpg and horsepower
+fit = kde2d(Cars93$MPG.highway, Cars93$Horsepower, h = c(10,85))
+contour(fit, col = topo.colors(20), xlab="MPG.highway", ylab="Horsepower", main="Kernel Density Estimation for MPG.highway and Horsepower")
+```
+
+Since the kernel density plot matches the smoothScatter well, I believe that my bandwidths are well chosen. From the kernel density plot, we can see that most cars have mid-range highway mpg and horsepower. No car has both high horsepower and highway mpg. Cars with high horsepower tend to have low highway mpg. Cars with low horsepower tend to have high highway mpg.The density estimation tells us that most common combinations are horsepower in (110, 170) and highway mpg in (26,31). The least common combinations are horsepower greater than 250 or lower than 80 and highway mpg less than 23 or greater than 43. 
+
+Below is the smoothscatter plot and kernel density estimation plot for city mpg and horsepower.
+
+```{r}
+smoothScatter(Cars93[,c("MPG.city","Horsepower")], nrpoints=0)
+
+# plot the kde plot for city mpg and horsepower
+fit2 = kde2d(Cars93$MPG.city, Cars93$Horsepower, h = c(9,85))
+contour(fit2, col = topo.colors(20),xlab="MPG.city", ylab="Horsepower", main="Kernel Density Estimation for MPG.city and Horsepower")
+```
+
+Since the kernel density plot matches the smoothScatter well, I believe that my bandwidths are well chosen. From the kernel density plot, we can see that most cars have mid-range city mpg and horsepower. No car has both high horsepower and city mpg.Cars with high horsepower tend to have low city mpg. Cars with low horsepower tend to have high city mpg. The density estimation tells us that most common combinations are horsepower in (130, 170) and city mpg in (17,23). The least common combinations are horsepower greater than 250 or lower than 70 and city mpg less than 16 or greater than 33. 
+
+## Exercise 7
+
+Below is the kernel density estimation plot for highway and city MPG of domestic cars. From the plot, we can see that cars with high highway mpg tend to have high city mpg as well. Most domestic cars have highway mpg in (27,29) and city mpg in (18, 20). Not many cars have highway mpg higher than 35 or lower than 21 and city mpg higher than 25 or lower than 16.
+
+```{r}
+# subset data for domestic cars
+y = Cars93[Cars93[,"Origin"]=="USA",]
+fit3 = kde2d(y$MPG.highway, y$MPG.city)
+contour(fit3, col = topo.colors(20), xlab="MPG.highway", ylab="MPG.city", main="Kernel Density Estimation for highway and city MPG of Domestic Cars")
+```
+
+Below is the kernel density estimation plot for highway and city MPG of imports. From the plot, we can see that cars with high highway mpg tend to have high city mpg as well. Most imports have highway mpg in (25,26) and city mpg in (19, 20). Not many cars have highway mpg higher than 40 or lower than 21 and city mpg higher than 35.
+
+Comparing domestic cars and imports, most common domestic cars tend to have slightly higher highway mpg than those from imports. In addition, imports seem to have wider highway and city mpg range than domestic cars.
+
+```{r}
+# subset data for imports
+z = Cars93[Cars93[,"Origin"]!="USA",]
+fit4 = kde2d(z$MPG.highway, z$MPG.city)
+contour(fit4,  col = topo.colors(20), xlab="MPG.highway", ylab="MPG.city", main="Kernel Density Estimation for highway and city MPG of Imports")
+```
+

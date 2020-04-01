@@ -1,0 +1,128 @@
+---
+title: "StellaLangHW9"
+author: "Stella Lang"
+date: "4/21/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2movies)
+library(Ecdat)
+library(streamgraph)
+library(scales)
+library(circlize)
+```
+
+
+## Exercise 1
+
+```{r}
+# Convert the length and rating values to numeric categories using floor
+# new values place lengths in 10 minute bins and ratings in 1 unit bins
+newmoviedata<-ggplot2movies::movies
+newmoviedata["length"]<-10*floor(newmoviedata["length"]/10)
+newmoviedata["rating"]<-floor(newmoviedata["rating"])
+```
+
+```{r}
+newmoviedata %>% 
+  group_by(year, length) %>%
+  tally() -> dat
+
+streamgraph(dat, "length", "n", "year", interactive=TRUE) %>%
+  sg_axis_x(20, "year", "%Y") %>%
+  sg_fill_brewer("PuOr")
+```
+
+Above is the streamgraph for movie lengths over time. Overall, we can see the trend of increase in total number of movies over time. From year 1893 to around 1930, not many movies were made. However, there is a drastic increase in the number of movies in late 1990s and early 2000s. The proportion of movies with length over 120 mins seems to be small over time (around the same with insignificant fluctuations). Over time there appears to be larger proportion of movies with length between 80 to 110. There is a major decrease during 1970 to 1990 for movies with lengths less than 80. The proportions of these movies first decrease then increase in 2000.
+
+```{r}
+newmoviedata %>% 
+  group_by(year, rating) %>%
+  tally() -> dat
+
+streamgraph(dat, "rating", "n", "year", interactive=TRUE) %>%
+  sg_axis_x(20, "year", "%Y") %>%
+  sg_fill_brewer("PuOr")
+```
+
+Above is the streamgraph for movie ratings over time. Over the years there appears to be large proportions of movies with ratings between 3 and 8 (around the same proportion each year with insignificant fluctuations). However, there appears to be relatively small proportions of movies with ratings below 3 or above 9 (around the same proportion each year with insignificant fluctuations).
+
+
+## Exercise 2
+
+```{r}
+newgrunfeld = Grunfeld
+# convert firm into categorical variable
+newgrunfeld$firm = as.factor(newgrunfeld$firm)
+# rescale numeric variables
+newgrunfeld$inv = rescale(newgrunfeld$inv, to = c(0,1))
+newgrunfeld$value = rescale(newgrunfeld$value, to = c(0,1))
+newgrunfeld$capital = rescale(newgrunfeld$capital, to = c(0,1))
+# rescale year
+newgrunfeld$year = rescale(newgrunfeld$year, to = c(0,1))
+```
+
+```{r}
+circos.clear()
+par(mar = c(1, 1, 1, 1), lwd = 0.1, cex = 0.7)
+circos.par("track.height" = 0.1)
+circos.initialize(factors = newgrunfeld$firm, x = newgrunfeld$year)
+circos.trackPlotRegion(factors = newgrunfeld$firm, y = newgrunfeld$inv,
+  panel.fun = function(x, y) {
+          circos.axis()
+})
+col = rep(c("#FF0000", "#00FF00"), 5)
+circos.trackPoints(newgrunfeld$firm, newgrunfeld$year, newgrunfeld$inv, col = col, pch = 16, cex = 0.5)
+
+
+# Line plots of scaled investment over time
+circos.trackLines(newgrunfeld$firm, newgrunfeld$year, newgrunfeld$inv)
+
+# Histograms of scaled valuation
+bgcol = rep(c("#EFEFEF", "#CCCCCC"), 5)
+circos.trackHist(newgrunfeld$firm, newgrunfeld$value, bg.col = bgcol, col = NA)
+
+# A label for the firm
+circos.trackPlotRegion(factors = newgrunfeld$firm, x = newgrunfeld$year,y = newgrunfeld$inv,
+      panel.fun = function(x, y) {
+          grey = c("#FFFFFF", "#CCCCCC", "#999999")
+          sector.index = get.cell.meta.data("sector.index")
+          xlim = get.cell.meta.data("xlim")
+          ylim = get.cell.meta.data("ylim")
+          circos.text(mean(xlim), mean(ylim), sector.index)
+  })
+
+# Scatter plots for scaled capital vs. scaled investment 
+circos.trackPlotRegion(factors = newgrunfeld$firm, y = newgrunfeld$inv)
+circos.trackPoints(newgrunfeld$firm, newgrunfeld$capital, newgrunfeld$inv, col = col, pch = 16, cex = 0.5)
+
+# Track lines for scaled year as the x coordinate and scaled capital as the y coordinate
+circos.trackPlotRegion(factors = newgrunfeld$firm, y = newgrunfeld$capital)
+circos.trackLines(newgrunfeld$firm, newgrunfeld$year, newgrunfeld$capital)
+```
+
+From the line plots, we can see that firm 1 and 2 seem to have relatively higher gross investment than other firms. Over time, the gross investment of firm 1 appears to increase while other firms do not have significant increase or decrease. Based upon the histgrams of scaled value, we can see that firm 5, 7 and 10 have relatively low value while firm 1 has the highest value.
+The scatter plots for scaled capital vs. scaled investment show that firm with low stock of plant and equipment (i.e. capital) tends to have low gross investment. From the track lines for scaled year vs scaled capital, overall the stock of plant and equipment for each firm increases over time. Among all the firms, the captial of firm 1 grows fastest while firm 10's stock doesn't seem to increase much over time.
+
+## Exercise 3
+
+```{r}
+team = read.csv("HW9TeamData.csv")
+chordDiagram(as.data.frame(table(team)),directional = TRUE)
+```
+
+In general, South division has higher player team changes while North has lower player team changes. South has relatively higher team-to-team migrations within division. Across divisions, West seems to have higher rates of player moving to other divisions while South has relatively lower rates to other divisions. For South division, players are most likely to stay in South or move to West division. For West division, players are most likely to move to South or move out of the league. For East and North divisions, players are most likely to move to South division. For players outside the league, they are more likely join South or East division. South and East divisions have higher flow of players from out of league while West and South divisions have higher flow of players leaving the league.
+
+
+```{r}
+subteam = subset(team, Starting.Division != "Not in League" & Ending.Division != "Not in League")
+chordDiagram(as.data.frame(table(subteam)),directional = TRUE)
+```
+
+After omitting moves into and out of the league, the chord diagram is shown above. In general, South division has higher player team changes while North has lower player team changes. South has relatively higher team-to-team migrations within division. Across divisions, West seems to have higher rates of player moving to other divisions while South has relatively lower rates to other divisions. For South division, players are most likely to stay in South or move to West division. For West,East and North divisions, players are most likely to move to South. A major difference is that players in west division are more likely to move to South and East after we omit out of league group while they are more likely to move to South and out of league if we consider out of league group.

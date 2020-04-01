@@ -1,0 +1,342 @@
+---
+title: "STAT 480 HW4"
+author: "Stella Lang"
+date: "2/19/2018"
+output: html_document
+---
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+# Following lines from sections 3.3 through 3.5.4 of the text are needed as setup for Exercise 2
+spamPath = "~/Stat480/RDataScience/SpamAssassinMessages"
+
+dirNames = list.files(path = paste(spamPath, "messages",
+                                   sep = .Platform$file.sep))
+fullDirNames = paste(spamPath, "messages", dirNames,
+                     sep = .Platform$file.sep)
+
+indx = c(1:5, 15, 27, 68, 69, 329, 404, 427, 516, 852, 971)
+fn = list.files(fullDirNames[1], full.names = TRUE)[indx]
+sampleEmail = sapply(fn, readLines)
+
+splitMessage = function(msg) {
+  splitPoint = match("", msg)
+  header = msg[1:(splitPoint-1)]
+  body = msg[ -(1:splitPoint) ]
+  return(list(header = header, body = body))
+}
+
+sampleSplit = lapply(sampleEmail, splitMessage)
+
+getBoundary = function(header) {
+  boundaryIdx = grep("boundary=", header)
+  boundary = gsub('"', "", header[boundaryIdx])
+  gsub(".*boundary= *([^;]*);?.*", "\\1", boundary)
+}
+
+dropAttach = function(body, boundary){
+
+  bString = paste("--", boundary, sep = "")
+  bStringLocs = which(bString == body)
+
+  # if there are fewer than 2 beginning boundary strings,
+  # there is on attachment to drop
+  if (length(bStringLocs) <= 1) return(body)
+
+  # do ending string processing
+  eString = paste("--", boundary, "--", sep = "")
+  eStringLoc = which(eString == body)
+
+  # if no ending boundary string, grab contents between the first
+  # two beginning boundary strings as the message body
+  if (length(eStringLoc) == 0)
+  return(body[ (bStringLocs[1] + 1) : (bStringLocs[2] - 1)])
+
+  # typical case of well-formed email with attachments
+  # grab contents between first two beginning boundary strings and
+  # add lines after ending boundary string
+  n = length(body)
+  if (eStringLoc < n)
+    return( body[ c( (bStringLocs[1] + 1) : (bStringLocs[2] - 1),
+                     ( (eStringLoc + 1) : n )) ] )
+
+  # fall through case
+  # note that the result is the same as the
+  # length(eStringLoc) == 0 case, so code could be simplified by
+  # dropping that case and modifying the eStringLoc < n check to
+  # be 0 < eStringLoc < n
+  return( body[ (bStringLocs[1] + 1) : (bStringLocs[2] - 1) ])
+}
+
+library(tm)
+stopWords = stopwords()
+cleanSW = tolower(gsub("[[:punct:]0-9[:blank:]]+", " ", stopWords))
+SWords = unlist(strsplit(cleanSW, "[[:blank:]]+"))
+SWords = SWords[ nchar(SWords) > 1 ]
+stopWords = unique(SWords)
+
+cleanText =
+  function(msg)   {
+    tolower(gsub("[[:punct:]0-9[:space:][:blank:]]+", " ", msg))
+  }
+
+findMsgWords =
+  function(msg, stopWords) {
+    if(is.null(msg))
+      return(character())
+
+    words = unique(unlist(strsplit(cleanText(msg), "[[:blank:]\t]+")))
+
+    # drop empty and 1 letter words
+    words = words[ nchar(words) > 1]
+    words = words[ !( words %in% stopWords) ]
+    invisible(words)
+  }
+
+processAllWords = function(dirName, stopWords)
+{
+  # read all files in the directory
+  fileNames = list.files(dirName, full.names = TRUE)
+  # drop files that are not email, i.e., cmds
+  notEmail = grep("cmds$", fileNames)
+  if ( length(notEmail) > 0) fileNames = fileNames[ - notEmail ]
+
+  messages = lapply(fileNames, readLines, encoding = "latin1")
+
+  # split header and body
+  emailSplit = lapply(messages, splitMessage)
+  # put body and header in own lists
+  bodyList = lapply(emailSplit, function(msg) msg$body)
+  headerList = lapply(emailSplit, function(msg) msg$header)
+  rm(emailSplit)
+
+  # determine which messages have attachments
+  hasAttach = sapply(headerList, function(header) {
+    CTloc = grep("Content-Type", header)
+    if (length(CTloc) == 0) return(0)
+    multi = grep("multi", tolower(header[CTloc]))
+    if (length(multi) == 0) return(0)
+    multi
+  })
+
+  hasAttach = which(hasAttach > 0)
+
+  # find boundary strings for messages with attachments
+  boundaries = sapply(headerList[hasAttach], getBoundary)
+
+  # drop attachments from message body
+  bodyList[hasAttach] = mapply(dropAttach, bodyList[hasAttach],
+                               boundaries, SIMPLIFY = FALSE)
+
+  # extract words from body
+  msgWordsList = lapply(bodyList, findMsgWords, stopWords)
+
+  invisible(msgWordsList)
+}
+
+msgWordsList = lapply(fullDirNames, processAllWords,
+                      stopWords = stopWords)
+msgWordsList = unlist(msgWordsList, recursive = FALSE)
+
+
+# Set working directory
+setwd("~/Stat480/RDataScience/Chapter3")
+# Load data structures and define variables and function needed in examples.
+# Note that emailXX.rda is created in the section 3.8 code and spamAssassinDerivedDF.rda is created in the
+# section 3.9 setup code. If those files do not already exist, they will need to be created with the code from those
+# respective sections.
+# These are needed for Exercises 1, 3, and 4.
+load("emailXX.rda")
+indx = c(1:5, 15, 27, 68, 69, 329, 404, 427, 516, 852, 971)
+sampleStruct = emailStruct[ indx ]
+load("spamAssassinDerivedDF.rda")
+library(class)
+```
+
+## Q1
+
+For this question, I wrote a function named `perVowels` to calculate standard vowels (a, e, i, o u) percentages in message bodies. If the message contains no letter, return NA. Otherwise, eliminate non-alpha characters and empty lines to get the body that only contains letters. Then extract vowels from the body where all uppper cases have been turned into lower cases. Last, calculate number of vowels and divide it by number of all letters to get the percentage.
+
+```{r}
+perVowels = function(msg){
+    body = paste(msg$body, collapse = "")
+
+    # Return NA if the body of the message is "empty"
+    if(length(body) == 0 || nchar(body) == 0) return(NA)
+
+    # Eliminate non-alpha characters and empty lines
+    body = gsub("[^[:alpha:]]", "", body)
+    vowText = gsub("[^aeiou]", "", tolower(body))
+
+    100 * nchar(vowText) / nchar(body)
+  }
+```
+
+Below are the percentages of vowels in each message body from `sampleStruct`.
+
+```{r,echo=FALSE}
+# test on sampleStruct
+ret1 = sapply(sampleStruct, perVowels)
+names(ret1) = seq(1, length(ret1))
+ret1
+```
+
+Then apply this function on `emailStruct` to check errors. The range of percentage is shown below and it seems reasonable.
+
+```{r, echo=FALSE}
+# check range of percentage
+percent = sapply(emailStruct, perVowels)
+range(percent)
+```
+
+Below is the boxplot. I use the log of percentage in y-axis. 
+
+```{r, echo=FALSE}
+# plot boxplot
+isSpamLabs = factor(emailDF$isSpam, labels = c("ham", "spam"))
+boxplot(log(1 + percent) ~ isSpamLabs,
+        ylab = "Percent Vowels (log)")
+```
+
+The minimum and maximum percentages for spam and ham are listed below.
+
+```{r, echo=FALSE}
+max_ham = max(res[which(isSpamLabs == "ham")])
+min_ham = min(res[which(isSpamLabs == "ham")])
+max_spam = max(res[which(isSpamLabs == "spam")])
+min_spam = min(res[which(isSpamLabs == "spam")])
+results = data.frame(c(max_ham, max_spam), c(min_ham, min_spam))
+colnames(results) = c("Max", "Min")
+rownames(results) = c("Ham", "Spam")
+knitr::kable(results,digits = 3, full_width = F)
+```
+
+From the plot we can see that the average percentage difference between spam and ham is not significantly large. And the ranges are quite similar. Therefore, percentage of vowels is not a useful charateristic for classifying spam or ham.
+
+
+## Q2
+
+The summary of averages differences are shown below. From the result we can see that the majority of average lengths of words obtained via `FindMsgWords` are greater than those from `avgWordLen`. It seems reasonable since `FindMsgWords` excludes stopwords and usually stopwords are pretty short. However, notice that there are some cases when average lengths of words obtained via `FindMsgWords` are equal or less than those from `avgWordLen`. Therefore, we cannot use the results from `FindMsgWords` as a basis for checking the implementation of `avgWordLen`.
+
+```{r, echo=FALSE}
+# average lengths of words obtained via FindMsgWords
+avg1 = sapply(sapply(msgWordsList, nchar), mean)
+```
+
+```{r, echo=FALSE}
+# average lengths of words from avgWordLen
+avg2 = emailDF$avgWordLen
+```
+
+```{r, echo=FALSE}
+num1 = sum(avg1 - avg2 == 0)
+num2 = sum(avg1 - avg2 < 0)
+num3 = sum(avg1 - avg2 > 0)
+ret2 = c(num1, num2, num3)
+names(ret2) = c("avg lengths (via FindMsgWords) = avg lengths (via avgWordLen)", "avg lengths (via FindMsgWords) < avg lengths (via avgWordLen)", "avg lengths (via FindMsgWords) > avg lengths (via avgWordLen)")
+```
+
+## Q3
+
+For this question, I set a range of `minbucket` values {1, 2, ..., 100}. With `minsplit` set to 1 and all other controls as defaults, fit the model with different `minbucket` value and store predictions in `fits`. Below is the plot with type I and type II error rates as y-axis and minbucket value as x-axis. Since the type I errors are worse in spam and ham filtering, minimizing the type I errors is priority. From the plot we can see that type I errors are quite stable while type II errors tend to increase as minbucket increases.
+
+```{r, echo=FALSE}
+# Following lines from section 3.11 and I modified them for question 3
+library(rpart)
+
+minbucket = seq(1, 100, by = 1)
+fits = lapply(minbucket, function(x) {
+  rpartObj = rpart(isSpam ~ ., data = trainDF,
+                   method="class",
+                   control = rpart.control(minsplit = 1, minbucket = x) )
+
+  predict(rpartObj,
+          newdata = testDF[ , names(testDF) != "isSpam"],
+          type = "class")
+})
+
+# Obtain the Type I and Type II error rates from these fittings.
+spam = testDF$isSpam == "T"
+numSpam = sum(spam)
+numHam = sum(!spam)
+errs = sapply(fits, function(preds) {
+  typeI = sum(preds[ !spam ] == "T") / numHam
+  typeII = sum(preds[ spam ] == "F") / numSpam
+  c(typeI = typeI, typeII = typeII)
+})
+
+library(RColorBrewer)
+cols = brewer.pal(9, "Set1")[c(3, 4, 5)]
+plot(errs[1,] ~ minbucket, type="l", col=cols[2],
+     lwd = 2, ylim = c(0,0.3), xlim = c(1, 100),
+     ylab="Error", xlab="minbucket parameter values")
+points(errs[2,] ~ minbucket, type="l", col=cols[1], lwd = 2)
+
+text(x =c(80, 80), y = c(0.4, 0.1),
+     labels=c("Type II Error", "Type I Error"))
+minI = which(errs[1,] == min(errs[1,]))[1]
+abline(v = minbucket[minI], col ="grey", lty =3, lwd=2)
+
+text(1, errs[1, minI]+0.01,
+     formatC(errs[1, minI], digits = 2))
+text(1, errs[2, minI]+0.01,
+     formatC(errs[2, minI], digits = 3))
+```
+
+To pick the best minbucket value, I first choose the point where type I error is the lowest. And then check whether type II error is reasonably low. If not, sacrifice a little bit of type I error to reduce type II error. The type I and type II errors are reasonably low where type I error minimum is obtained. Therefore, the best minbucket value to obtain low type I and type II errors is listed below.
+
+```{r, echo=FALSE}
+minbucket[minI]
+```
+
+
+## Q4
+
+For this question, I tried k from 1 to 100 for implementing knn. Using `bodyCharCt`, `perCaps`, `perHTML` and `avgWordLen` as predictors and `isSpam` as response, fit KNN models with different k and store predictions in `pred`. Then plot type I and type II errors with error rates as y-axis and k values as x-axis. From the plot, we can see that generally type II errors tends to increase as k increases while type I errors first increases a liitle bit then decreases and remain stable as k increases.
+
+```{r, echo=FALSE}
+# Following lines from section 3.11 and I modified them for question 4
+
+X_default_trn = trainDF[c("bodyCharCt", "perCaps", "perHTML", "avgWordLen")]
+X_default_tst = testDF[c("bodyCharCt", "perCaps", "perHTML", "avgWordLen")]
+y_default_trn = trainDF$isSpam
+
+k_to_try = 1:100
+pred = list()
+for (i in seq_along(k_to_try)) {
+  pred[[i]] = knn(train = X_default_trn,
+             test  = X_default_tst,
+             cl    = y_default_trn,
+             k     = k_to_try[i])
+}
+errs_knn = sapply(pred, function(preds) {
+  typeI = sum(preds[ !spam ] == "T") / numHam
+  typeII = sum(preds[ spam ] == "F") / numSpam
+  c(typeI = typeI, typeII = typeII)
+})
+
+
+# plot type I and type II errors
+plot(errs_knn[1,] ~ k_to_try, type="l", col=cols[2],
+     lwd = 2, ylim = c(0,1), xlim = c(1, 100),
+     ylab="Error", xlab="k parameter values")
+points(errs_knn[2,] ~ k_to_try, type="l", col=cols[1], lwd = 2)
+
+text(x =c(80, 80), y = c(0.4, 0.1),
+     labels=c("Type II Error", "Type I Error"))
+
+minI = which(errs_knn[1,] == min(errs_knn[1,]))[1]
+abline(v = k_to_try[minI], col ="grey", lty =3, lwd=2)
+
+text(1, errs_knn[1, minI]+0.01,
+     formatC(errs_knn[1, minI], digits = 2))
+text(1, errs_knn[2, minI]+0.01,
+     formatC(errs_knn[2, minI], digits = 3))
+```
+
+Similar to question 3, to pick the best k value, I first choose the k value where type I error is the lowest. And then check whether type II error is reasonably low. If not, sacrifice a little bit of type I error to reduce type II error. The type I and type II errors are reasonably low where type I error minimum is obtained. Therefore, the best k value to obtain low type I and type II errors is listed below.
+
+```{r, echo=FALSE}
+k_to_try[minI]
+```
+
+In terms of classification accuracy, rpart did slightly better than knn.
