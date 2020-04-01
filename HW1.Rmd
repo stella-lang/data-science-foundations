@@ -1,0 +1,102 @@
+---
+title: "STAT 480 HW1"
+author: "Stella Lang"
+date: "1/26/2018"
+output: html_document
+---
+
+```{r}
+setwd("~/Stat480/RDataScience/AirlineDelays")
+```
+
+```{r, message=FALSE}
+library(RSQLite)
+library(biganalytics)
+library(foreach)
+```
+
+```{r}
+delay.con = dbConnect(RSQLite::SQLite(), dbname = "AirlineDelay1980s.sqlite3")
+```
+
+## Q1
+
+```{r}
+dbGetQuery(
+  delay.con,
+  "SELECT DayOfWeek, COUNT(DayOfWeek) FROM AirlineDelay1980s WHERE Year IN ('1987', '1988', '1989') GROUP BY DayOfWeek"
+  )
+```
+
+From the results, we can see that Saturday had the lightest traffic and Thursday had the heaviest traffic.
+
+## Q2
+
+```{r}
+dbGetQuery(
+  delay.con,
+  "SELECT Year, DayOfWeek, COUNT(DayOfWeek) FROM AirlineDelay1980s WHERE Year IN ('1987', '1988', '1989') GROUP BY Year, DayOfWeek"
+  )
+```
+
+For each year, the numbers of flights for each day of the week are listed above. Overall, the number of flights in 1987 is less than those in 1988 and 1989. Over these three years, Saturday had the lightest air traffic volume on a weekly basis. However, the day of the week with the heaviest air traffic volume varied from year to year. In 1987, Thursday had the heaviest traffic. In 1988, Friday had the heaviest traffic. In 1989,Tuesday had the heaviest traffic.
+
+## Q3
+
+```{r}
+dbGetQuery(
+  delay.con,
+  "SELECT Year, COUNT(ArrDelay) FROM AirlineDelay1980s WHERE Year IN ('1987', '1988', '1989') AND ArrDelay < 0 GROUP BY Year"
+  )
+```
+
+From 1987 to 1989, 419697, 2080990 and 1879528 flights arrived early respectively. Based on this table, the number of early arrivals in 1988 is the highest and in 1987 is the lowest which also had the lowest total number of flights among these three years. 
+
+## Q4
+
+```{r}
+x = attach.big.matrix("air0708.desc")
+```
+
+```{r}
+# calculate number of early arrivals
+yearCount = foreach(i = 2007:2008, .combine = c) %do% {
+    sum(x[x[,"Year"] == i, "ArrDelay"] < 0, na.rm = TRUE)
+}
+
+yearCount
+```
+
+From 2007 to 2008, 3618468 and 3690606 flights arrived early respectively.
+ 
+## Q5
+
+```{r}
+# calculate average departure delay time for each month
+monthDelays = foreach(i = 1:12, .combine = c) %do% {
+  mean(x[x[,"Month"] == i, "DepDelay"], na.rm = TRUE)
+}
+
+names(monthDelays) =  month.name
+monthDelays
+```
+
+September was the best for minimizing arrival delays because it had the lowest average departure delay time.
+
+```{r}
+# get the arrival hour.
+arrHours = floor(x[,"CRSArrTime"]/100)
+
+# Set the arrival hours listed as 24 to 0.
+arrHours[arrHours == 24] = 0
+
+# calculate average arrival delay time for each hour of the day
+hourDelays = foreach(i = 0:23, .combine = c) %do% {
+  mean(x[arrHours == i, "ArrDelay"], na.rm = TRUE)
+}
+
+names(hourDelays) =  seq(0, 23)
+hourDelays
+```
+
+21 had the worst arrival delays.

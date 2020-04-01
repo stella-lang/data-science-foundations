@@ -1,0 +1,7 @@
+-- create average view
+DROP VIEW IF EXISTS average;
+
+CREATE VIEW average AS SELECT stocksymbol, market, AVG(price_close) AS average_price_close FROM stocks GROUP BY stocksymbol, market;
+
+-- show 10 records from the view
+SELECT * FROM average LIMIT 10;

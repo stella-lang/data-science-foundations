@@ -1,0 +1,14 @@
+-- create amznrecords table
+DROP TABLE IF EXISTS amznrecords;
+
+CREATE TABLE amznrecords AS
+SELECT * FROM stocks
+WHERE (market = 'NASDAQ' AND stocksymbol='AMZN');
+
+-- show 10 records in the table
+SELECT * FROM amznrecords LIMIT 10;
+
+-- find the largest and smallest opening prices and corresponding dates
+SELECT datemdy, price_open FROM amznrecords JOIN (SELECT MIN(price_open) min FROM amznrecords) r WHERE r.min=amznrecords.price_open;
+
+SELECT datemdy, price_open FROM amznrecords JOIN (SELECT MAX(price_open) max FROM amznrecords) r WHERE r.max=amznrecords.price_open;

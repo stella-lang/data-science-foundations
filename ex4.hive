@@ -1,0 +1,8 @@
+-- first find the largest average closing price in each market and then inner join the average view to find stocksymbol
+
+SELECT t.market, t.stocksymbol, t.average_price_close
+  FROM ( SELECT market, MAX(average_price_close) AS max_price
+           FROM average
+         GROUP BY market ) AS m
+INNER JOIN average AS t
+    ON t.market = m.market AND t.average_price_close = m.max_price

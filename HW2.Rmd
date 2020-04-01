@@ -1,0 +1,92 @@
+---
+title: "STAT 480 HW2"
+author: "Stella Lang"
+date: "2/4/2018"
+output: html_document
+---
+
+```{r}
+setwd("~/Stat480/RDataScience/AirlineDelays")
+```
+
+```{r, message=FALSE}
+library(biganalytics)
+library(foreach)
+```
+
+## Q1
+
+```{r}
+x = attach.big.matrix("air0708.desc")
+```
+
+```{r}
+# subset of may flights
+may = x[x[, "Month"] == 5,]
+
+# calculate average arrival delay time for each day of the week in may
+dayDelays = foreach(i = 1:7, .combine = c) %do% {
+  mean(may[may[,"DayOfWeek"] == i, "ArrDelay"], na.rm = TRUE)
+}
+
+names(dayDelays) =  c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+dayDelays
+```
+
+```{r}
+which.max(dayDelays)
+which.min(dayDelays)
+```
+
+Based on the results, we can see that Saturday has the lowest average arrival delay time and Friday has the highest. Therefore, Saturday is the best day to fly and Friday is the worst.
+
+## Q2
+
+```{r}
+# calculate average arrival delay time for each month
+monthDelays = foreach(i = 1:12, .combine = c) %do% {
+  mean(x[x[,"Month"] == i, "ArrDelay"], na.rm = TRUE)
+}
+
+names(monthDelays) =  month.name
+monthDelays
+```
+
+```{r}
+which.min(monthDelays)
+```
+
+September was the best for minimizing arrival delays since it had the smallest average arrival delay time.
+
+
+## Q3
+
+```{r}
+blm_1 = biglm.big.matrix( ArrDelay ~ CRSElapsedTime, data = x )
+summary(blm_1)
+
+summary(blm_1)$rsq
+```
+
+Based on the summary results, the r square is 7.351529e-05, which means that 0.00735% of the arrival delays in 2007-2008 could be explained by scheduled flight time alone. The coefficient is 0.0048, which indicates that the relationship is positive.
+
+```{r}
+blm_2 = biglm.big.matrix( ArrDelay ~ Distance, data = x )
+summary(blm_2)
+
+summary(blm_2)$rsq
+```
+Based on the summary results, the r square is 4.423015e-06, which means that 0.00044% of the arrival delays in 2007-2008 could be explained by scheduled flight distance alone. The coefficient is 0.0001, which indicates that the relationship is positive. 
+
+Neither of these two variables are good predictors for arrival delay since the coefficients and R square for each variable are quite small (close to 0).
+
+## Q4
+
+```{r}
+blm_3 = biglm.big.matrix( ArrDelay ~ WeatherDelay + SecurityDelay, data = x )
+summary(blm_3)
+
+summary(blm_3)$rsq
+```
+
+Based on the results, we can see that the R square is 0.0800349, which indicates that 8% of weather delays and security delays are related to arrival delays. The coefficient for weather delay is 1.0865, for security delay is 0.9434. In other words, with security delay remains unchanged, one unit increase in weather delay will lead to 1.0865 unit increase in arrival delays on average. With weather delay remains unchanged, one unit increase in security delay will lead to 0.9434 unit increase in arrival delays on average.

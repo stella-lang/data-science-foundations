@@ -1,0 +1,480 @@
+---
+title: "StellaLangHW3"
+author: "Stella Lang"
+date: "2/12/2018"
+output: html_document
+---
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# The following lines from sections 3.3 through 3.6.3 define functions and objects 
+# that are needed or may be useful for the exercises.
+spamPath = "~/Stat480/RDataScience/SpamAssassinMessages"
+
+dirNames = list.files(path = paste(spamPath, "messages", 
+                                   sep = .Platform$file.sep))
+fullDirNames = paste(spamPath, "messages", dirNames, 
+                     sep = .Platform$file.sep)
+
+indx = c(1:5, 15, 27, 68, 69, 329, 404, 427, 516, 852, 971)
+fn = list.files(fullDirNames[1], full.names = TRUE)[indx]
+sampleEmail = sapply(fn, readLines)
+
+splitMessage = function(msg) {
+  splitPoint = match("", msg)
+  header = msg[1:(splitPoint-1)]
+  body = msg[ -(1:splitPoint) ]
+  return(list(header = header, body = body))
+}
+
+sampleSplit = lapply(sampleEmail, splitMessage)
+
+getBoundary = function(header) {
+  boundaryIdx = grep("boundary=", header)
+  boundary = gsub('"', "", header[boundaryIdx])
+  gsub(".*boundary= *([^;]*);?.*", "\\1", boundary)
+}
+
+dropAttach = function(body, boundary){
+  
+  bString = paste("--", boundary, sep = "")
+  bStringLocs = which(bString == body)
+  
+  # if there are fewer than 2 beginning boundary strings, 
+  # there is on attachment to drop
+  if (length(bStringLocs) <= 1) return(body)
+  
+  # do ending string processing
+  eString = paste("--", boundary, "--", sep = "")
+  eStringLoc = which(eString == body)
+  
+  # if no ending boundary string, grab contents between the first 
+  # two beginning boundary strings as the message body
+  if (length(eStringLoc) == 0) 
+    return(body[ (bStringLocs[1] + 1) : (bStringLocs[2] - 1)])
+  
+  # typical case of well-formed email with attachments
+  # grab contents between first two beginning boundary strings and 
+  # add lines after ending boundary string
+  n = length(body)
+  if (eStringLoc < n) 
+    return( body[ c( (bStringLocs[1] + 1) : (bStringLocs[2] - 1), 
+                     ( (eStringLoc + 1) : n )) ] )
+  
+  # fall through case
+  # note that the result is the same as the 
+  # length(eStringLoc) == 0 case, so code could be simplified by 
+  # dropping that case and modifying the eStringLoc < n check to 
+  # be 0 < eStringLoc < n
+  return( body[ (bStringLocs[1] + 1) : (bStringLocs[2] - 1) ])
+}
+
+library(tm)
+stopWords = stopwords()
+cleanSW = tolower(gsub("[[:punct:]0-9[:blank:]]+", " ", stopWords))
+SWords = unlist(strsplit(cleanSW, "[[:blank:]]+"))
+SWords = SWords[ nchar(SWords) > 1 ]
+stopWords = unique(SWords)
+
+cleanText =
+  function(msg)   {
+    tolower(gsub("[[:punct:]0-9[:space:][:blank:]]+", " ", msg))
+  }
+
+findMsgWords = 
+  function(msg, stopWords) {
+    if(is.null(msg))
+      return(character())
+    
+    words = unique(unlist(strsplit(cleanText(msg), "[[:blank:]\t]+")))
+    
+    # drop empty and 1 letter words
+    words = words[ nchar(words) > 1]
+    words = words[ !( words %in% stopWords) ]
+    invisible(words)
+  }
+
+processAllWords = function(dirName, stopWords)
+{
+  # read all files in the directory
+  fileNames = list.files(dirName, full.names = TRUE)
+  # drop files that are not email, i.e., cmds
+  notEmail = grep("cmds$", fileNames)
+  if ( length(notEmail) > 0) fileNames = fileNames[ - notEmail ]
+  
+  messages = lapply(fileNames, readLines, encoding = "latin1")
+  
+  # split header and body
+  emailSplit = lapply(messages, splitMessage)
+  # put body and header in own lists
+  bodyList = lapply(emailSplit, function(msg) msg$body)
+  headerList = lapply(emailSplit, function(msg) msg$header)
+  rm(emailSplit)
+  
+  # determine which messages have attachments
+  hasAttach = sapply(headerList, function(header) {
+    CTloc = grep("Content-Type", header)
+    if (length(CTloc) == 0) return(0)
+    multi = grep("multi", tolower(header[CTloc])) 
+    if (length(multi) == 0) return(0)
+    multi
+  })
+  
+  hasAttach = which(hasAttach > 0)
+  
+  # find boundary strings for messages with attachments
+  boundaries = sapply(headerList[hasAttach], getBoundary)
+  
+  # drop attachments from message body
+  bodyList[hasAttach] = mapply(dropAttach, bodyList[hasAttach], 
+                               boundaries, SIMPLIFY = FALSE)
+  
+  # extract words from body
+  msgWordsList = lapply(bodyList, findMsgWords, stopWords)
+  
+  invisible(msgWordsList)
+}
+
+msgWordsList = lapply(fullDirNames, processAllWords, 
+                      stopWords = stopWords) 
+
+numMsgs = sapply(msgWordsList, length)
+
+isSpam = rep(c(FALSE, FALSE, FALSE, TRUE, TRUE), numMsgs)
+
+msgWordsList = unlist(msgWordsList, recursive = FALSE)
+
+# Determine number of spam and ham messages for sampling.
+numEmail = length(isSpam)
+numSpam = sum(isSpam)
+numHam = numEmail - numSpam
+
+# Set a particular seed, so the results will be reproducible.
+set.seed(418910)
+
+# Take approximately 1/3 of the spam and ham messages as our test spam and ham messages.
+testSpamIdx = sample(numSpam, size = floor(numSpam/3))
+testHamIdx = sample(numHam, size = floor(numHam/3))
+
+# Use the test indices to select word lists for test messages.
+# Use training indices to select word lists for training messages.
+testMsgWords = c((msgWordsList[isSpam])[testSpamIdx],
+                 (msgWordsList[!isSpam])[testHamIdx] )
+trainMsgWords = c((msgWordsList[isSpam])[ - testSpamIdx], 
+                  (msgWordsList[!isSpam])[ - testHamIdx])
+
+# Create variables indicating which testing and training messages are spam and not.
+testIsSpam = rep(c(TRUE, FALSE), 
+                 c(length(testSpamIdx), length(testHamIdx)))
+trainIsSpam = rep(c(TRUE, FALSE), 
+                  c(numSpam - length(testSpamIdx), 
+                    numHam - length(testHamIdx)))
+
+
+computeFreqs =
+  function(wordsList, spam, bow = unique(unlist(wordsList)))
+  {
+    # create a matrix for spam, ham, and log odds
+    wordTable = matrix(0.5, nrow = 4, ncol = length(bow), 
+                       dimnames = list(c("spam", "ham", 
+                                         "presentLogOdds", 
+                                         "absentLogOdds"),  bow))
+    
+    # For each spam message, add 1/2 to counts for words in message
+    counts.spam = table(unlist(lapply(wordsList[spam], unique)))
+    wordTable["spam", names(counts.spam)] = counts.spam + .5
+    
+    # Similarly for ham messages
+    counts.ham = table(unlist(lapply(wordsList[!spam], unique)))  
+    wordTable["ham", names(counts.ham)] = counts.ham + .5  
+    
+    
+    # Find the total number of spam and ham
+    numSpam = sum(spam)
+    numHam = length(spam) - numSpam
+    
+    # Prob(word|spam) and Prob(word | ham)
+    wordTable["spam", ] = wordTable["spam", ]/(numSpam + .5)
+    wordTable["ham", ] = wordTable["ham", ]/(numHam + .5)
+    
+    # log odds
+    wordTable["presentLogOdds", ] = 
+      log(wordTable["spam",]) - log(wordTable["ham", ])
+    wordTable["absentLogOdds", ] = 
+      log((1 - wordTable["spam", ])) - log((1 -wordTable["ham", ]))
+    
+    invisible(wordTable)
+  }
+
+# Obtain the probabilities and log odds for the training data.
+trainTable = computeFreqs(trainMsgWords, trainIsSpam)
+
+computeMsgLLR = function(words, freqTable) 
+{
+  # Discards words not in training data.
+  words = words[!is.na(match(words, colnames(freqTable)))]
+  
+  # Find which words are present
+  present = colnames(freqTable) %in% words
+  
+  sum(freqTable["presentLogOdds", present]) +
+    sum(freqTable["absentLogOdds", !present])
+}
+
+# Set the working directory. This is where R will look for files and save files if a full path is not specified.
+setwd("~/Stat480/RDataScience/Chapter3")
+
+
+# Message text for testing removal of URLs in Exercise 1
+testmsgBody=c("This is a url http://stat.illinois.edu.",
+              "Sometimes URLs just start with a world wide web address like www.google.com.",
+              "They can also be secure, like https://whatever.com.",
+              "There are also file transfer protocol addresses like ftp://someagency.gov or ftps://filelocation.org.",
+              "But we wouldn't want to remove www, http, https, ftp, or ftps on their own.")
+
+
+```
+
+
+## Q1
+
+For this question, I wrote a function named `dropURL`. In this function, I use `gsub` to find all qualified urls and remove them.
+
+```{r}
+dropURL = function(body){
+  gsub(" ?www\\..*?\\.(com|gov|edu|info|org|net|mil)", "", gsub(" ?(f|ht)tp(s?)://(.*)[.][a-z]+", "", body))
+}
+```
+
+```{r, echo=FALSE}
+# Message text for testing removal of URLs in Exercise 1
+testmsgBody=c("This is a url http://stat.illinois.edu.",
+              "Sometimes URLs just start with a world wide web address like www.google.com.",
+              "They can also be secure, like https://whatever.com.",
+              "There are also file transfer protocol addresses like ftp://someagency.gov or ftps://filelocation.org.",
+              "But we wouldn't want to remove www, http, https, ftp, or ftps on their own.")
+```
+
+Then I test this function on the `testmsgBody`. The result is shown below.
+
+```{r}
+dropURL(testmsgBody)
+```
+
+## Q2
+
+To handle cases where no subject is in the header, I first check whether there is a line with "Subject:" in the header. If not, return an error message "No subject line." If yes, then check whether there is any content in that line. If there is content in subject line, use `findMsgWords` from class to extract words from the subject. Otherwise, return another error message "No subject content".
+
+```{r}
+extractSubject = function(header, stopwords){
+  # find the location of subject line
+  idx = grep("Subject:", header)
+  
+  # if there is no subject line in the email
+  if (identical(idx, integer(0))){
+    return("No subject line.")
+  }
+  else{
+    # extract subject values
+    subject = header[idx]
+    subject = sub("Subject:", "", subject)
+    
+    # if there is no subject content
+    if(subject == ""){
+      return("No subject content.")
+    }
+    else{
+      # if there is subject content
+      findMsgWords(subject, stopwords)
+    }
+  
+  }
+  
+}
+```
+
+Test on the sample email headers. The results are shown below.
+
+```{r}
+# test on the 15 sample email headers
+headerList = lapply(sampleSplit, function(msg) msg$header)
+
+lapply(headerList, extractSubject, stopWords)
+```
+
+## Q3
+
+The alternative version functions are shown below. In `myFreqs`, we calculate the ratios of probabilities first. Then in `myMsgLLR` we calculate the products of ratios and sum the logs of those.
+
+```{r}
+myFreqs =
+  function(wordsList, spam, bow = unique(unlist(wordsList)))
+  {
+    # create a matrix for spam, ham, and log odds
+    wordTable = matrix(0.5, nrow = 4, ncol = length(bow), 
+                       dimnames = list(c("spam", "ham", 
+                                         "presentLogOdds", 
+                                         "absentLogOdds"),  bow))
+    
+    # For each spam message, add 1/2 to counts for words in message
+    counts.spam = table(unlist(lapply(wordsList[spam], unique)))
+    wordTable["spam", names(counts.spam)] = counts.spam + .5
+    
+    # Similarly for ham messages
+    counts.ham = table(unlist(lapply(wordsList[!spam], unique)))  
+    wordTable["ham", names(counts.ham)] = counts.ham + .5  
+    
+    
+    # Find the total number of spam and ham
+    numSpam = sum(spam)
+    numHam = length(spam) - numSpam
+    
+    # Prob(word|spam) and Prob(word | ham)
+    wordTable["spam", ] = wordTable["spam", ]/(numSpam + .5)
+    wordTable["ham", ] = wordTable["ham", ]/(numHam + .5)
+    
+    # odds
+    wordTable["presentLogOdds", ] = 
+      wordTable["spam",]/wordTable["ham", ]
+    wordTable["absentLogOdds", ] = 
+      (1 - wordTable["spam", ])/(1 -wordTable["ham", ])
+    
+    invisible(wordTable)
+  }
+```
+
+```{r}
+myMsgLLR = function(words, freqTable) 
+{
+  # Discards words not in training data.
+  words = words[!is.na(match(words, colnames(freqTable)))]
+  
+  # Find which words are present
+  present = colnames(freqTable) %in% words
+  
+  log(prod(freqTable["presentLogOdds", present])) +
+    log(prod(freqTable["absentLogOdds", !present]))
+}
+```
+
+
+```{r}
+# compare accuracy
+trainTable = computeFreqs(trainMsgWords, trainIsSpam)
+testLLR = sapply(testMsgWords, computeMsgLLR, trainTable)
+trainTable2 = myFreqs(trainMsgWords, trainIsSpam)
+testLLR2 = sapply(testMsgWords, myMsgLLR, trainTable2)
+
+# original functions
+tapply(testLLR, testIsSpam, summary)
+
+# alternative functions
+tapply(testLLR2, testIsSpam, summary)
+```
+In terms of accuracy, both original and alternative functions did a great job. Positive is more likely spam. From the summary results, we can see that 1st quantile and 3rd quantile for false are all negative while those for true are all positive. The only difference is the minimal and maximal values in the summary. There are infinity values for the alternative functions. Probably it is because we calculate the products of probabilities first, which may lead to infinity value. Since the original functions calculate the log of probabilities ratios first, which avoids the existence of infinity value.
+
+```{r}
+# compare computation time
+# original functions
+system.time(computeFreqs(trainMsgWords, trainIsSpam))
+system.time(sapply(testMsgWords, computeMsgLLR, trainTable))
+
+# alternative functions
+system.time(myFreqs(trainMsgWords, trainIsSpam))
+system.time(sapply(testMsgWords, myMsgLLR, trainTable2))
+```
+
+As for the computation time, for the original functions(`computeFreqs` and `computeMsgLLR`), we can see that they are slightly more computationally time-consuming compared with the alternative version functions(`myFreqs` and `myMsgLLR`). 
+
+
+## Q4
+
+For this question, I modified the dropAttach function by adding one more input argument `whether_extract` that indicates whether or not the words in text/HTML attachments are to be extracted. If no attachments need to be extracted, use the original `dropAttach` function. Otherwise, check attachments type to decide whether keep or drop attachments. To find out whether the attachments are html or not, I checked "Content-Type" in the attachments part. If it is "text/html" type, then keep the attachment. If not, drop it.
+
+```{r}
+myDropAttach = function(body, boundary, whether_extract){
+  
+  if(whether_extract == FALSE){
+    dropAttach(body, boundary)
+  }
+  else{
+
+  bString = paste("--", boundary, sep = "")
+  bStringLocs = which(bString == body)
+  
+  # if there are fewer than 2 beginning boundary strings, 
+  # there is on attachment to drop
+  if (length(bStringLocs) <= 1) return(body)
+  
+  # do ending string processing
+  eString = paste("--", boundary, "--", sep = "")
+  eStringLoc = which(eString == body)
+  
+  # if no ending boundary string, grab contents between the first 
+  # two beginning boundary strings as the message body
+  n = length(body)
+  if (length(eStringLoc) == 0) {
+    loc = grep("Content-Type: text/html;", body)
+    # type = sub("Content-Type: ", "", body[loc[2]])
+    # print(type)
+    if (!identical(loc, integer(0))){
+      return(body[c( (bStringLocs[1] + 1) : (bStringLocs[2] - 1), (bStringLocs[2] + 1) : n  )])
+    }
+    return(body[ (bStringLocs[1] + 1) : (bStringLocs[2] - 1)])
+  }
+  # typical case of well-formed email with attachments
+  # grab contents between first two beginning boundary strings and 
+  # add lines after ending boundary string
+  if (eStringLoc < n) {
+    loc = grep("Content-Type: text/html;", body)
+
+    if (!identical(loc, integer(0))){
+      return(body[c( (bStringLocs[1] + 1) : (bStringLocs[2] - 1), (bStringLocs[2] + 1) : n  )])
+    }
+    return( body[ c( (bStringLocs[1] + 1) : (bStringLocs[2] - 1), 
+                     ( (eStringLoc + 1) : n )) ] )
+  }
+  # fall through case
+  # note that the result is the same as the 
+  # length(eStringLoc) == 0 case, so code could be simplified by 
+  # dropping that case and modifying the eStringLoc < n check to 
+  # be 0 < eStringLoc < n
+  return( body[ (bStringLocs[1] + 1) : (bStringLocs[2] - 1) ])
+  }
+}
+```
+
+The processed message lengths after using the original `dropAttach` function are listed below.
+
+```{r}
+hasAttach = sapply(headerList, function(header) {
+    CTloc = grep("Content-Type", header)
+    if (length(CTloc) == 0) return(0)
+    multi = grep("multi", tolower(header[CTloc])) 
+    if (length(multi) == 0) return(0)
+    multi
+  })
+  
+  hasAttach = which(hasAttach > 0)
+  
+  # find boundary strings for messages with attachments
+  boundaries = sapply(headerList[hasAttach], getBoundary)
+  
+  bodyList = lapply(sampleSplit, function(msg) msg$body)
+  
+  # drop attachments from message body
+  bodyList[hasAttach] = mapply(dropAttach, bodyList[hasAttach], 
+                               boundaries, SIMPLIFY = FALSE)
+  lapply(bodyList[hasAttach], length)
+```
+
+Suppose we need to extract the html attachments as well, the processed message lengths after using the modified `dropAttach` function `myDropAttach` are listed below.
+
+```{r}
+bodyList = lapply(sampleSplit, function(msg) msg$body)
+
+bodyList[hasAttach] = mapply(myDropAttach, bodyList[hasAttach], 
+                               boundaries, TRUE, SIMPLIFY = FALSE)
+lapply(bodyList[hasAttach], length)
+```
+
+Comparing these two sets of lengths, we can see that messages with non-text/non-html attachments have the same lengths.`myDropAttach` function keep those text/html attachments. If the message lengths differ, then the difference between these two length values for the same message is the length of the text/html attachments.

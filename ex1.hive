@@ -1,0 +1,13 @@
+-- create stocks table
+DROP TABLE IF EXISTS stocks;
+
+CREATE TABLE stocks (market STRING, stocksymbol STRING, datemdy STRING, price_open FLOAT, price_high FLOAT, price_low FLOAT, price_close FLOAT, volume INT, price_adj_close FLOAT)
+ROW FORMAT DELIMITED
+ FIELDS TERMINATED BY ',';
+
+-- load data into file
+LOAD DATA LOCAL INPATH 'input/stocks.csv'
+OVERWRITE INTO TABLE stocks;
+
+-- show 10 records in the table
+SELECT * FROM stocks LIMIT 10;
